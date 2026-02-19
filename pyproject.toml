@@ -1,0 +1,38 @@
+[project]
+name = "cloud-agentic-skill"
+version = "1.0.0"
+description = "Recursive Agentic Skill Management system with Elasticsearch"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+dependencies = [
+    "opensearch-py>=2.0,<3",
+    "sentence-transformers>=2.6,<3",
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.29,<1",
+    "pydantic>=2.6,<3",
+    "pydantic-settings>=2.2,<3",
+    "bcrypt>=4.0,<5",
+    "PyJWT>=2.8,<3",
+    "python-multipart>=0.0.9",
+    "requests>=2.31,<3",
+    "streamlit>=1.32,<2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "httpx>=0.27,<1",
+    "pytest-asyncio>=0.23,<1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.uv]
+python-preference = "managed"
