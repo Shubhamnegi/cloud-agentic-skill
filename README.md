@@ -1,4 +1,5 @@
 # Cloud Agentic Skill
+**Alternate of [mcpdoc](https://github.com/langchain-ai/mcpdoc)  | Better at handling context size for agent | Inspired from agent skill | All Skills at one place (opensearch)**
 
 A **Recursive Agentic Skill Management** system built on Elasticsearch using a **Link-Graph Architecture**. Every skill is a node that can be a leaf (with content) or a branch (pointing to other skills), enabling progressive context loading for AI agents.
 
@@ -120,14 +121,25 @@ uv run pytest tests/ -v
 | `POST` | `/auth/register` | Admin | Create user |
 | `GET` | `/auth/users` | Admin | List users |
 | `POST` | `/api-keys/` | Admin | Generate API key |
-| `GET` | `/mcp/tools` | API Key | List MCP tools |
-| `POST` | `/mcp/tools/call` | API Key | Invoke MCP tool |
+| `POST` | `/mcp` | API Key | **Standard MCP — JSON-RPC 2.0** (use with mcp-remote / Claude Desktop) |
+| `GET` | `/mcp/tools` | API Key | _(Legacy)_ List MCP tools |
+| `POST` | `/mcp/tools/call` | API Key | _(Legacy)_ Invoke MCP tool |
 
 ---
 
 ## Connecting via MCP
 
-The backend exposes three MCP tools at `/mcp/tools` and `/mcp/tools/call`. All requests require an `X-API-Key` header.
+This server implements the **Model Context Protocol (MCP) over JSON-RPC 2.0**.
+All MCP clients (`mcp-remote`, Claude Desktop, VS Code MCP extension, MCP Inspector)
+must talk to a single endpoint:
+
+```
+POST http://localhost:8000/mcp
+```
+
+All requests require an `X-API-Key` header.
+
+---
 
 ### Step 1 — Start the backend
 
@@ -154,37 +166,81 @@ curl -X POST http://localhost:8000/api-keys/ \
   -d '{"name": "my-agent", "scopes": ["SQL_SKILL"]}'
 ```
 
-### Step 3 — Use the MCP Tools
+---
+
+### Step 3 — Test with MCP Inspector
+
+[MCP Inspector](https://github.com/modelcontextprotocol/inspector) is the easiest way to
+verify your server before wiring up a real agent.
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+Then enter `http://localhost:8000/mcp` as the server URL and add
+`X-API-Key: <your-api-key>` as a custom header.
+
+![MCP Inspector demo](docs/mcp-inspector-demo.png)
+
+---
+
+### Step 4 — Use the MCP Tools via JSON-RPC
+
+All three calls go to **`POST /mcp`** with a JSON-RPC 2.0 body.
+
+#### Capability handshake (required by most clients)
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}'
+```
 
 #### List available tools
 ```bash
-curl http://localhost:8000/mcp/tools \
-  -H "X-API-Key: <your-api-key>"
+curl -X POST http://localhost:8000/mcp \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}'
 ```
 
 #### `find_relevant_skill` — Semantic search
 ```bash
-curl -X POST http://localhost:8000/mcp/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "X-API-Key: <your-api-key>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "find_relevant_skill", "arguments": {"query": "How do I shard my database?", "k": 3}}'
+  -d '{
+    "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+    "params": {
+      "name": "find_relevant_skill",
+      "arguments": {"query": "How do I shard my database?", "k": 3}
+    }
+  }'
 ```
 
 #### `list_sub_skills` — Navigate a skill branch
 ```bash
-curl -X POST http://localhost:8000/mcp/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "X-API-Key: <your-api-key>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "list_sub_skills", "arguments": {"skill_id": "SQL_SKILL"}}'
+  -d '{
+    "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+    "params": {"name": "list_sub_skills", "arguments": {"skill_id": "SQL_SKILL"}}
+  }'
 ```
 
 #### `load_instruction` — Fetch full Markdown content
 ```bash
-curl -X POST http://localhost:8000/mcp/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "X-API-Key: <your-api-key>" \
   -H "Content-Type: application/json" \
-  -d '{"name": "load_instruction", "arguments": {"skill_id": "SQL_SKILL_MIGRATION"}}'
+  -d '{
+    "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+    "params": {"name": "load_instruction", "arguments": {"skill_id": "SQL_SKILL_MIGRATION"}}
+  }'
 ```
+
+---
 
 ### Claude Desktop Integration
 
@@ -195,52 +251,81 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "cloud-agentic-skill": {
       "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:8000/mcp"],
-      "env": {
-        "MCP_API_KEY": "<your-api-key>"
-      }
+      "args": [
+        "-y", "mcp-remote",
+        "http://localhost:8000/mcp",
+        "--header", "X-API-Key: <your-api-key>"
+      ]
     }
   }
 }
 ```
+
+> **Note:** `mcp-remote` does **not** add auth headers automatically — the `--header` flag is required.
+
+---
 
 ### Python Agent Integration
 
 ```python
 import requests
 
-BASE = "http://localhost:8000/mcp"
+BASE    = "http://localhost:8000/mcp"
 HEADERS = {"X-API-Key": "<your-api-key>", "Content-Type": "application/json"}
+_id     = 0
 
-def call_tool(name: str, arguments: dict):
-    return requests.post(f"{BASE}/tools/call", headers=HEADERS,
-                         json={"name": name, "arguments": arguments}).json()
+def rpc(method: str, params: dict = {}) -> dict:
+    global _id
+    _id += 1
+    r = requests.post(BASE, headers=HEADERS, json={
+        "jsonrpc": "2.0", "id": _id, "method": method, "params": params
+    })
+    r.raise_for_status()
+    return r.json()["result"]
 
-# 1. Discover relevant skills
-results = call_tool("find_relevant_skill", {"query": "optimize SQL queries", "k": 3})
+# 1. Handshake
+rpc("initialize")
 
-# 2. Navigate or load
-for skill in results["results"]:
-    if skill["has_children"]:
-        children = call_tool("list_sub_skills", {"skill_id": skill["skill_id"]})
-    else:
-        instruction = call_tool("load_instruction", {"skill_id": skill["skill_id"]})
-        print(instruction["content"])
+# 2. Discover relevant skills
+result = rpc("tools/call", {
+    "name": "find_relevant_skill",
+    "arguments": {"query": "optimize SQL queries", "k": 3}
+})
+print(result["content"][0]["text"])
+
+# 3. Load a specific skill instruction
+result = rpc("tools/call", {
+    "name": "load_instruction",
+    "arguments": {"skill_id": "SQL_SKILL_OPTIMIZATION"}
+})
+print(result["content"][0]["text"])
 ```
+
+---
+
+### Endpoint Reference
+
+| Endpoint | Protocol | Use when |
+|---|---|---|
+| `POST /mcp` | **JSON-RPC 2.0 (MCP spec)** | mcp-remote, Claude Desktop, MCP Inspector, any MCP client |
+| `GET /mcp/tools` | REST _(legacy)_ | Direct HTTP testing / older integrations |
+| `POST /mcp/tools/call` | REST _(legacy)_ | Direct HTTP testing / older integrations |
+
+---
 
 ### Agentic Flow
 
 ```
 Agent Query
     │
-    ▼
+    ▼  POST /mcp  {method: "tools/call", params: {name: "find_relevant_skill", …}}
 find_relevant_skill  ──►  [skill summaries + has_children flag]
     │
     ├─ has_children=true  ──►  list_sub_skills  ──►  [child skill list]
     │                                                        │
     └─ has_children=false ◄──────────────────────────────────┘
     │
-    ▼
+    ▼  POST /mcp  {method: "tools/call", params: {name: "load_instruction", …}}
 load_instruction  ──►  Full Markdown content  ──►  Agent executes task
 ```
 
