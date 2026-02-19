@@ -125,12 +125,134 @@ uv run pytest tests/ -v
 
 ---
 
+## Connecting via MCP
+
+The backend exposes three MCP tools at `/mcp/tools` and `/mcp/tools/call`. All requests require an `X-API-Key` header.
+
+### Step 1 — Start the backend
+
+```bash
+docker-compose up -d        # or: uv run uvicorn app.main:app --reload
+```
+
+### Step 2 — Generate an API Key
+
+**Via Dashboard** → `http://localhost:8501` → **Security** tab → **Generate Key**
+
+**Or via API:**
+
+```bash
+# 1. Login to get a JWT token
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin"}'
+
+# 2. Create an API key (replace <jwt-token> below)
+curl -X POST http://localhost:8000/api-keys/ \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-agent", "scopes": ["SQL_SKILL"]}'
+```
+
+### Step 3 — Use the MCP Tools
+
+#### List available tools
+```bash
+curl http://localhost:8000/mcp/tools \
+  -H "X-API-Key: <your-api-key>"
+```
+
+#### `find_relevant_skill` — Semantic search
+```bash
+curl -X POST http://localhost:8000/mcp/tools/call \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "find_relevant_skill", "arguments": {"query": "How do I shard my database?", "k": 3}}'
+```
+
+#### `list_sub_skills` — Navigate a skill branch
+```bash
+curl -X POST http://localhost:8000/mcp/tools/call \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "list_sub_skills", "arguments": {"skill_id": "SQL_SKILL"}}'
+```
+
+#### `load_instruction` — Fetch full Markdown content
+```bash
+curl -X POST http://localhost:8000/mcp/tools/call \
+  -H "X-API-Key: <your-api-key>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "load_instruction", "arguments": {"skill_id": "SQL_SKILL_MIGRATION"}}'
+```
+
+### Claude Desktop Integration
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "cloud-agentic-skill": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:8000/mcp"],
+      "env": {
+        "MCP_API_KEY": "<your-api-key>"
+      }
+    }
+  }
+}
+```
+
+### Python Agent Integration
+
+```python
+import requests
+
+BASE = "http://localhost:8000/mcp"
+HEADERS = {"X-API-Key": "<your-api-key>", "Content-Type": "application/json"}
+
+def call_tool(name: str, arguments: dict):
+    return requests.post(f"{BASE}/tools/call", headers=HEADERS,
+                         json={"name": name, "arguments": arguments}).json()
+
+# 1. Discover relevant skills
+results = call_tool("find_relevant_skill", {"query": "optimize SQL queries", "k": 3})
+
+# 2. Navigate or load
+for skill in results["results"]:
+    if skill["has_children"]:
+        children = call_tool("list_sub_skills", {"skill_id": skill["skill_id"]})
+    else:
+        instruction = call_tool("load_instruction", {"skill_id": skill["skill_id"]})
+        print(instruction["content"])
+```
+
+### Agentic Flow
+
+```
+Agent Query
+    │
+    ▼
+find_relevant_skill  ──►  [skill summaries + has_children flag]
+    │
+    ├─ has_children=true  ──►  list_sub_skills  ──►  [child skill list]
+    │                                                        │
+    └─ has_children=false ◄──────────────────────────────────┘
+    │
+    ▼
+load_instruction  ──►  Full Markdown content  ──►  Agent executes task
+```
+
+---
+
 ## Documentation
 
 Detailed documentation is available in the [`docs/`](docs/) folder:
 
 | Document | Description |
 |---|---|
+| [Onboarding Guide](docs/onboarding.md) | **Start here** — real-world walkthrough with curl examples and a full Python agent loop |
 | [Architecture](docs/architecture.md) | System layers, logic flow, and component stack |
 | [Data Schema](docs/data-schema.md) | Elasticsearch index mapping and field definitions |
 | [Implementation Guide](docs/implementation-guide.md) | Python code for embedding, search, and traversal |
