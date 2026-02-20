@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import streamlit as st
-from dashboard.api_client import create_api_key, list_api_keys, revoke_api_key
+try:
+    from dashboard.api_client import create_api_key, list_api_keys, revoke_api_key
+except ModuleNotFoundError:
+    from api_client import create_api_key, list_api_keys, revoke_api_key
 
 
 def render(backend: str, headers: dict) -> None:

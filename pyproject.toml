@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+backend = [
     "opensearch-py>=2.0,<3",
     "sentence-transformers>=2.6,<3",
     "fastapi>=0.110,<1",
@@ -16,6 +19,8 @@ dependencies = [
     "bcrypt>=4.0,<5",
     "PyJWT>=2.8,<3",
     "python-multipart>=0.0.9",
+]
+dashboard = [
     "requests>=2.31,<3",
     "streamlit>=1.32,<2",
 ]

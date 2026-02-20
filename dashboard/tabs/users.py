@@ -2,12 +2,20 @@
 from __future__ import annotations
 
 import streamlit as st
-from dashboard.api_client import (
-    delete_user,
-    list_users,
-    register_user,
-    update_user_permissions,
-)
+try:
+    from dashboard.api_client import (
+        delete_user,
+        list_users,
+        register_user,
+        update_user_permissions,
+    )
+except ModuleNotFoundError:
+    from api_client import (
+        delete_user,
+        list_users,
+        register_user,
+        update_user_permissions,
+    )
 
 
 def render(backend: str, headers: dict, current_username: str) -> None:

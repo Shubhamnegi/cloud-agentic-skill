@@ -84,7 +84,7 @@ docker run -d --name es -p 9200:9200 \
   docker.elastic.co/elasticsearch/elasticsearch:8.12.0
 
 # 2. Install Python dependencies (uv creates a .venv automatically)
-uv sync
+uv sync --extra backend --extra dashboard
 
 # 3. Seed sample data
 uv run python -m scripts.seed_data
@@ -99,7 +99,7 @@ uv run streamlit run dashboard/app.py
 ### Option C: Run tests (no Elasticsearch needed)
 
 ```bash
-uv sync --dev
+uv sync --dev --extra backend
 uv run pytest tests/ -v
 ```
 

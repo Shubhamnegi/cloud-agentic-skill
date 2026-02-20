@@ -2,13 +2,22 @@
 from __future__ import annotations
 
 import streamlit as st
-from dashboard.api_client import (
-    delete_skill,
-    get_skill,
-    get_skill_tree,
-    search_skills,
-    upsert_skill,
-)
+try:
+    from dashboard.api_client import (
+        delete_skill,
+        get_skill,
+        get_skill_tree,
+        search_skills,
+        upsert_skill,
+    )
+except ModuleNotFoundError:
+    from api_client import (
+        delete_skill,
+        get_skill,
+        get_skill_tree,
+        search_skills,
+        upsert_skill,
+    )
 
 # ── helpers ────────────────────────────────────────────────────────────────
 

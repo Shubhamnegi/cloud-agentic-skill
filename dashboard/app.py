@@ -14,8 +14,12 @@ from __future__ import annotations
 
 import streamlit as st
 
-from dashboard.api_client import login
-from dashboard.tabs import health, logs, security, studio, users
+try:
+    from dashboard.api_client import login
+    from dashboard.tabs import health, logs, security, studio, users
+except ModuleNotFoundError:
+    from api_client import login
+    from tabs import health, logs, security, studio, users
 
 # ─── Page config ───────────────────────────────────────────────────────────
 

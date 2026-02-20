@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import streamlit as st
-from dashboard.api_client import get_health
+try:
+    from dashboard.api_client import get_health
+except ModuleNotFoundError:
+    from api_client import get_health
 
 
 def render(backend: str) -> None:
